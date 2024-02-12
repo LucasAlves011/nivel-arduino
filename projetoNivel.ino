@@ -8,13 +8,15 @@
 #define H HIGH
 
 //PORTAS
-#define RELE 31
+#define RELE 32 //31
 #define BUZZER 7
-#define SENSOR_NIVEL_BOMBA_BAIXO 3
-#define SENSOR_NIVEL_BOMBA_CIMA 4
+#define SENSOR_BUFFER_CIMA 5
+#define SENSOR_BUFFER_BAIXO 7
 #define ULTRASSONICO_CIMA_TRIG 12
 #define ULTRASSONICO_CIMA_ECHO 11
 #define LED_BOMBA 52
+#define TOM 10
+#define BUFFER_ 48
 
 LiquidCrystal_I2C lcd(0x27,16,2);
 UltraSonicDistanceSensor ultrassonico(ULTRASSONICO_CIMA_TRIG,ULTRASSONICO_CIMA_ECHO);
@@ -42,9 +44,12 @@ char daysOfTheWeek[7][12] = {"Domingo","Segunda-Feira","Terça-Feira","Quarta-Fe
 DateTime agora;
 void attDataHoraPercentual(DateTime dataHora, int percentualCaixaDagua);
 
+bool status = true;
 float leituraAtualNormalizada = 0;
 float leituraAtualBruta = 0;
 int percentualCaixaMedia = 0;
+
+int volumeBuzzer = 6;
 
 void setup() {
   Serial.begin(9600);
@@ -58,7 +63,15 @@ void setup() {
   //RETIRAR QUANDO FOR PARA PRODUCAO
   rtc.adjust(DateTime(__DATE__,__TIME__));  
   pinMode(RELE,O);
+  pinMode(BUZZER,O);
   pinMode(LED_BOMBA,O);
+  pinMode(SENSOR_BUFFER_BAIXO,INPUT_PULLUP);  
+  pinMode(SENSOR_BUFFER_CIMA,INPUT_PULLUP);
+  
+  digitalWrite(SENSOR_BUFFER_BAIXO,L);  
+  digitalWrite(SENSOR_BUFFER_CIMA,L);
+
+  
   // digitalWrite(RELE,L);
   // pinMode(11,I);
   digitalWrite(LED_BOMBA,L);
@@ -73,26 +86,38 @@ void setup() {
    
 }
 bool horarioPermite = false;
+bool a = false;
+bool b = false;
 
 void loop() {
+  
   agora = rtc.now();
   leituraAtualBruta = ultrassonico.measureDistanceCm();
   leituraAtualNormalizada = constrain(leituraAtualBruta,ALTURA_TAMPA_CAIXA,  ALTURA_CAIXA_DAGUA);
   percentualCaixaMedia = 100 - map(mediaDescartadora(leituraAtualNormalizada),ALTURA_TAMPA_CAIXA ,ALTURA_CAIXA_DAGUA, 0, 100);
   attDataHoraPercentual(agora,percentualCaixaMedia);
  
-  if(horarioPermiteExecutar(agora) && percentualCaixaMedia < 40 ){     
+  if((horarioPermiteExecutar(agora) && percentualCaixaMedia < 40) || status ){
+    if(!status){
+      status = true;
+      alarmeEntrada();
+    }
+
+    if(percentualCaixaMedia == 99)
+      status = false;
+             
     Serial.print(" -> LIGADO <- ");
     digitalWrite(RELE,LOW);
     digitalWrite(LED_BOMBA,H);
     Serial.print(percentualCaixaMedia);
-    Serial.print("%");
-  }else {
+    Serial.print("%");   
+  }else {    
     Serial.print(" -> DESLIGADO <-  ");
     digitalWrite(RELE, HIGH);
     digitalWrite(LED_BOMBA,L);
     Serial.print(percentualCaixaMedia);
     Serial.print("%");
+    status = false;    
   }  
 
   Serial.print("\n");
@@ -101,11 +126,39 @@ void loop() {
   Serial.print(" Normalizada: ");  
   Serial.print(leituraAtualNormalizada);
   Serial.print(" - Media: ");
-  Serial.print(mediaDescartadora(leituraAtualNormalizada));  
+  Serial.print(mediaDescartadora(leituraAtualNormalizada));
+  Serial.print(" - Status: ");
+  Serial.print(status);  
+  a = digitalRead(SENSOR_BUFFER_BAIXO);
+  b = digitalRead(SENSOR_BUFFER_CIMA);
+  Serial.print(" - BUFFER_BAIXO: ");
+  Serial.print(a);
+   Serial.print(" - BUFFER_CIMA: ");
+  Serial.print(b);  
   
-  delay(500);
+  delay(100);
 }
 
+
+void alarmeEntrada(){   
+  for (int i = 0 ; i < 3; i++) {
+    Serial.print("\n TOCANDO ALARME...");
+    Serial.print(i);    
+    tone(BUZZER, 1200); 
+    delay(120);
+    noTone(BUZZER);
+    delay(120);
+    tone(BUZZER, 1200); 
+    delay(120);
+    noTone(BUZZER);
+    delay(120);
+    tone(BUZZER, 1200); 
+    delay(120);
+    noTone(BUZZER);
+    delay(500);
+  }
+  Serial.print("\n");    
+}
 bool horarioPermiteExecutar(DateTime horaAtual){
   long horaAtualParaSegundos = (horaAtual.hour() * 3600L) + (horaAtual.minute() * 60L) + horaAtual.second();  
   
