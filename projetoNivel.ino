@@ -9,13 +9,12 @@
 
 //PORTAS
 #define RELE 32 //31
-#define BUZZER 7
+#define BUZZER 48
 #define SENSOR_BUFFER_CIMA 5
 #define SENSOR_BUFFER_BAIXO 4
 #define ULTRASSONICO_CIMA_TRIG 12
 #define ULTRASSONICO_CIMA_ECHO 11
 #define LED_BOMBA 52
-#define BUFFER_ 48
 #define LED_ESPERANDO_BUFFER_ENCHER 51
 #define BTN_LIGAR_BOMBA 2
 #define BTN_PAUSAR_SISTEMA_AUTOMATICO 3
@@ -114,91 +113,103 @@ void setup() {
    
 }
 
-void loop() {  
+#define CLOCK 0
+#define ALARME 1
+
+unsigned long previousMillis[2] = {0,0};
+bool buzzerTocando = false;
+
+void loop() {    
   
   agora = rtc.now();
-  leituraAtualBruta = ultrassonico.measureDistanceCm();
-  leituraAtualNormalizada = constrain(leituraAtualBruta,ALTURA_TAMPA_CAIXA,  ALTURA_CAIXA_DAGUA);
-  percentualCaixaMedia = 100 - map(mediaDescartadora(leituraAtualNormalizada),ALTURA_TAMPA_CAIXA ,ALTURA_CAIXA_DAGUA, 0, 100);
-  /*
-  atualizarTela();
-  // attDataHoraPercentual(agora,percentualCaixaMedia);
-  buffer_baixo_normalizado = leitura2Segundos(digitalRead(SENSOR_BUFFER_BAIXO),&nivel_baixo);
-  buffer_cima_normalizado = leitura2Segundos(digitalRead(SENSOR_BUFFER_CIMA),&nivel_cima);
 
-        //BAIXO                        BAIXO
-  if((!buffer_baixo_normalizado && !buffer_cima_normalizado) || esperando_buffer_encher) {
-    esperando_buffer_encher = !(buffer_cima_normalizado && buffer_baixo_normalizado);     
+  //Clock de 0,2 segundos
+  if( (millis() - previousMillis[CLOCK]) >= 200 ){
+    previousMillis[CLOCK] = millis();
+
+    leituraAtualBruta = ultrassonico.measureDistanceCm();
+    leituraAtualNormalizada = constrain(leituraAtualBruta,ALTURA_TAMPA_CAIXA,  ALTURA_CAIXA_DAGUA);
+    percentualCaixaMedia = 100 - map(mediaDescartadora(leituraAtualNormalizada),ALTURA_TAMPA_CAIXA ,ALTURA_CAIXA_DAGUA, 0, 100);
+    
+    atualizarTela();
+    // attDataHoraPercentual(agora,percentualCaixaMedia);
+    buffer_baixo_normalizado = leitura2Segundos(digitalRead(SENSOR_BUFFER_BAIXO),&nivel_baixo);
+    buffer_cima_normalizado = leitura2Segundos(digitalRead(SENSOR_BUFFER_CIMA),&nivel_cima);
+
+          //BAIXO                        BAIXO
+    if((!buffer_baixo_normalizado && !buffer_cima_normalizado) || esperando_buffer_encher) {
+      esperando_buffer_encher = !(buffer_cima_normalizado && buffer_baixo_normalizado);     
+    }
+
+    digitalWrite(LED_ESPERANDO_BUFFER_ENCHER,esperando_buffer_encher ? H : L);
+
+    if(!sistema_automatico_pausado){
+      if((horarioPermiteExecutar(agora) && percentualCaixaMedia < 60 && buffer_cima_normalizado && buffer_baixo_normalizado) || (statusBomba && !esperando_buffer_encher)){
+
+        if(!statusBomba){
+          statusBomba = true;
+          alarmeEntrada2();
+        }
+
+        if(percentualCaixaMedia >= 99)
+          statusBomba = false;
+                
+        Serial.print(" -> LIGADO <- ");
+        digitalWrite(RELE,LOW);
+        digitalWrite(LED_BOMBA,H);
+        Serial.print(percentualCaixaMedia);
+        Serial.print("%");   
+      }else {    
+        Serial.print(" -> DESLIGADO <-  ");
+        digitalWrite(RELE, HIGH);
+        digitalWrite(LED_BOMBA,L);
+        Serial.print(percentualCaixaMedia);
+        Serial.print("%");
+        statusBomba = false;    
+      } 
+    }
+
+    Serial.print("\n");
+    Serial.print("Bruta: ");
+    Serial.print(leituraAtualBruta);
+    Serial.print(" Normalizada: ");  
+    Serial.print(leituraAtualNormalizada);
+    Serial.print(" - Media: ");
+    Serial.print(mediaDescartadora(leituraAtualNormalizada));
+    Serial.print(" - statusBomba: ");
+    Serial.print(statusBomba);  
+    Serial.print(" | BUFFER_BAIXO: ");
+    Serial.print(buffer_baixo_normalizado);
+    Serial.print("(");
+    Serial.print(digitalRead(SENSOR_BUFFER_BAIXO));
+    Serial.print(")");
+    Serial.print(" - BUFFER_CIMA: ");
+    Serial.print(buffer_cima_normalizado);
+    Serial.print("(");
+    Serial.print(digitalRead(SENSOR_BUFFER_CIMA));
+    Serial.print(")");
+    Serial.print(" - BTN_BOMBA ");
+    Serial.print(digitalRead(BTN_LIGAR_BOMBA));
+    Serial.print(" - STATUS_BOMBA ");
+    Serial.print(statusBomba);
+    Serial.print(" - Pause ");
+    Serial.print(sistema_automatico_pausado);
+        
+    // Serial.print(" = Leitura 2sec : ");
+    // Serial.print(leitura2Segundos(b,&nivel_cima));
+    // Serial.print(" ");  
+    // grafico();
+    /*
+    bool valor = digitalRead(SENSOR_PRESENCA);
+    if(valor){
+      Serial.print(" Detectou ");
+    }else {
+      Serial.print(" --------- ");
+    }
+    Serial.print("\n");
+    */
   }
-
-  digitalWrite(LED_ESPERANDO_BUFFER_ENCHER,esperando_buffer_encher ? H : L);
-
-  if(!sistema_automatico_pausado){
-    if((horarioPermiteExecutar(agora) && percentualCaixaMedia < 60 && buffer_cima_normalizado && buffer_baixo_normalizado) || (statusBomba && !esperando_buffer_encher)){
-
-      if(!statusBomba){
-        statusBomba = true;
-        alarmeEntrada();
-      }
-
-      if(percentualCaixaMedia >= 99)
-        statusBomba = false;
-              
-      Serial.print(" -> LIGADO <- ");
-      digitalWrite(RELE,LOW);
-      digitalWrite(LED_BOMBA,H);
-      Serial.print(percentualCaixaMedia);
-      Serial.print("%");   
-    }else {    
-      Serial.print(" -> DESLIGADO <-  ");
-      digitalWrite(RELE, HIGH);
-      digitalWrite(LED_BOMBA,L);
-      Serial.print(percentualCaixaMedia);
-      Serial.print("%");
-      statusBomba = false;    
-    } 
-  }
-
-  Serial.print("\n");
-  Serial.print("Bruta: ");
-  Serial.print(leituraAtualBruta);
-  Serial.print(" Normalizada: ");  
-  Serial.print(leituraAtualNormalizada);
-  Serial.print(" - Media: ");
-  Serial.print(mediaDescartadora(leituraAtualNormalizada));
-  Serial.print(" - statusBomba: ");
-  Serial.print(statusBomba);  
-  Serial.print(" | BUFFER_BAIXO: ");
-  Serial.print(buffer_baixo_normalizado);
-  Serial.print("(");
-  Serial.print(digitalRead(SENSOR_BUFFER_BAIXO));
-  Serial.print(")");
-  Serial.print(" - BUFFER_CIMA: ");
-  Serial.print(buffer_cima_normalizado);
-  Serial.print("(");
-  Serial.print(digitalRead(SENSOR_BUFFER_CIMA));
-  Serial.print(")");
-  Serial.print(" - BTN_BOMBA ");
-  Serial.print(digitalRead(BTN_LIGAR_BOMBA));
-  Serial.print(" - STATUS_BOMBA ");
-  Serial.print(statusBomba);
-  Serial.print(" - Pause ");
-  Serial.print(sistema_automatico_pausado);
-  */
   
-  // Serial.print(" = Leitura 2sec : ");
-  // Serial.print(leitura2Segundos(b,&nivel_cima));
-  // Serial.print(" ");  
-  // grafico();
-  bool valor = digitalRead(SENSOR_PRESENCA);
-  if(valor){
-    Serial.print(" Detectou ");
-  }else {
-    Serial.print(" --------- ");
-  }
-  Serial.print("\n");
-
-  delay(200);
 }
 
 void ligarBomba(){
@@ -211,6 +222,33 @@ void pausarSistemaAutomatico(){
   sistema_automatico_pausado = !sistema_automatico_pausado;
   digitalWrite(BTN_PAUSAR_SISTEMA_AUTOMATICO,L);
 }
+
+
+void alarmeEntrada2() {
+  for (int i = 0; i < 3; i++) {
+    Serial.print("\n TOCANDO ALARME...");
+    Serial.print(i);
+
+    unsigned long currentMillis = millis();
+
+    // Toca o tom por 120 milissegundos
+    if (!buzzerTocando) {
+      tone(BUZZER, 1200);
+      buzzerTocando = true;
+    } else if (currentMillis - previousMillis[ALARME] >= 120) {
+      noTone(BUZZER);
+      buzzerTocando = false;
+      previousMillis[ALARME] = currentMillis;
+    }
+
+    // Espera 500 milissegundos entre cada iteração
+    if (currentMillis - previousMillis[ALARME] >= 500) {
+      previousMillis[ALARME] = currentMillis;
+      delay(1);
+    }
+  }
+}
+
 
 void alarmeEntrada(){   
   for (int i = 0 ; i < 3; i++) {
@@ -328,7 +366,6 @@ void attDataHoraPercentual(DateTime dataHora, int percentualCaixaDagua) {
 bool leitura2Segundos(bool leitura, SensorNivel *sensor){
 
   bool statusAtual = sensor -> statusAtual;
-
   sensor -> leituras[sensor -> index++] = leitura;
 
   if(sensor -> index == 10)
